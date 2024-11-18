@@ -1,0 +1,189 @@
+1. Database Creation
+
+
+CREATE DATABASE HomeFinanceTracker;
+USE HomeFinanceTracker;
+
+
+2. Tables and Relationships
+
+User Table
+Stores user details such as email, name, and role.
+
+
+CREATE TABLE User (
+    user_id INT PRIMARY KEY AUTO_INCREMENT,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    name VARCHAR(50) NOT NULL,
+    role ENUM('Admin', 'User') DEFAULT 'User',
+    password VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+);
+
+Category Table
+Stores categories for income and expense transactions.
+
+
+CREATE TABLE Category (
+    category_id INT PRIMARY KEY AUTO_INCREMENT,
+    category_name VARCHAR(50) NOT NULL
+);
+
+Balance Table
+Tracks the current balance for each user. This will be updated by triggers based on income and expense transactions.
+
+
+CREATE TABLE Balance (
+    balance_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    current_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES User(user_id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);
+
+Income Table
+Stores individual income transactions, linked to the Balance table and Category.
+
+
+CREATE TABLE Income (
+    income_id INT PRIMARY KEY AUTO_INCREMENT,
+    balance_id INT NOT NULL,
+    category_id INT,
+    amount DECIMAL(15, 2) NOT NULL,
+    income_date DATE NOT NULL,
+    description VARCHAR(100),
+    FOREIGN KEY (balance_id) REFERENCES Balance(balance_id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (category_id) REFERENCES Category(category_id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE
+);
+
+Expense Table
+Stores individual expense transactions, linked to the Balance table and Category.
+
+
+CREATE TABLE Expense (
+    expense_id INT PRIMARY KEY AUTO_INCREMENT,
+    balance_id INT NOT NULL,
+    category_id INT,
+    amount DECIMAL(15, 2) NOT NULL,
+    expense_date DATE NOT NULL,
+    description VARCHAR(100),
+    FOREIGN KEY (balance_id) REFERENCES Balance(balance_id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (category_id) REFERENCES Category(category_id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE
+);
+
+
+3. Triggers to Maintain Balance Table
+To keep the Balance table updated with each transaction, we’ll create triggers that adjust current_balance based on income and expense entries.
+
+Income Insert Trigger
+Increases the balance when a new income transaction is added.
+
+DELIMITER //
+CREATE TRIGGER after_income_insert
+AFTER INSERT ON Income
+FOR EACH ROW
+BEGIN
+    UPDATE Balance
+    SET current_balance = current_balance + NEW.amount
+    WHERE balance_id = NEW.balance_id;
+END//
+DELIMITER ;
+
+
+Expense Insert Trigger
+Decreases the balance when a new expense transaction is added.
+
+DELIMITER //
+CREATE TRIGGER after_expense_insert
+AFTER INSERT ON Expense
+FOR EACH ROW
+BEGIN
+    UPDATE Balance
+    SET current_balance = current_balance - NEW.amount
+    WHERE balance_id = NEW.balance_id;
+END//
+DELIMITER ;
+
+Income Update Trigger
+Adjusts the balance if an income transaction amount is modified.
+
+DELIMITER //
+CREATE TRIGGER after_income_update
+AFTER UPDATE ON Income
+FOR EACH ROW
+BEGIN
+    UPDATE Balance
+    SET current_balance = current_balance - OLD.amount + NEW.amount
+    WHERE balance_id = NEW.balance_id;
+END//
+DELIMITER ;
+
+Expense Update Trigger
+Adjusts the balance if an expense transaction amount is modified.
+
+DELIMITER //
+CREATE TRIGGER after_expense_update
+AFTER UPDATE ON Expense
+FOR EACH ROW
+BEGIN
+    UPDATE Balance
+    SET current_balance = current_balance + OLD.amount - NEW.amount
+    WHERE balance_id = NEW.balance_id;
+END//
+DELIMITER ;
+
+Income Delete Trigger
+Decreases the balance if an income transaction is deleted.
+
+DELIMITER //
+CREATE TRIGGER after_income_delete
+AFTER DELETE ON Income
+FOR EACH ROW
+BEGIN
+    UPDATE Balance
+    SET current_balance = current_balance - OLD.amount
+    WHERE balance_id = OLD.balance_id;
+END//
+DELIMITER ;
+
+Expense Delete Trigger
+Increases the balance if an expense transaction is deleted.
+
+DELIMITER //
+CREATE TRIGGER after_expense_delete
+AFTER DELETE ON Expense
+FOR EACH ROW
+BEGIN
+    UPDATE Balance
+    SET current_balance = current_balance + OLD.amount
+    WHERE balance_id = OLD.balance_id;
+END//
+DELIMITER ;
+
+DELIMITER //
+CREATE TRIGGER after_user_insert
+AFTER INSERT ON User
+FOR EACH ROW
+BEGIN
+    INSERT INTO Balance (user_id, current_balance)
+    VALUES (NEW.user_id, 0);
+END//
+DELIMITER ;
+
+Summary
+User: Stores user information, including email, name, and role.
+Category: Holds categories for income and expenses.
+Balance: Maintains each user's current balance, updated by triggers.
+Income and Expense: Track individual transactions and are linked to Balance for easy tracking and updating of the balance.
+This setup efficiently handles each user's finances, keeping a running balance that updates automatically as transactions are added, updated, or deleted.
